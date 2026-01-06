@@ -31,7 +31,7 @@ import {
 } from '@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/compute/v1/instance_service'
 import { dump, load } from 'js-yaml'
 import { Config, GithubRepo } from './config'
-import { getRegistrationToken, removeRunner, waitForRunnerRegistered } from './gh'
+import { getRegistrationToken, removeRunner, waitForRunnerRegistered, getAvailableRunner } from './gh'
 import { fromServiceAccountJsonFile } from './service-account-json'
 import moment from 'moment'
 import { SessionConfig } from '@yandex-cloud/nodejs-sdk/dist/types'
@@ -148,6 +148,9 @@ async function createVm(
         // For example, by using Cron trigger that will call Cloud Function to destroy the instance.
         labels['expires'] = moment.utc().add(config.input.ttl).unix().toString()
     }
+    
+    // Add the runner label to VM labels for identification
+    labels['runner-label'] = label
 
     const op = await instanceService.create(
         CreateInstanceRequest.fromPartial({
@@ -202,7 +205,7 @@ async function destroyVm(
     session: Session,
     instanceService: WrappedServiceClientType<typeof InstanceServiceService>
 ): Promise<void> {
-    startGroup('Create VM')
+    startGroup('Destroy VM')
 
     const op = await instanceService.delete(
         DeleteInstanceRequest.fromPartial({
@@ -214,8 +217,8 @@ async function destroyVm(
         const instanceId = decodeMessage<CreateInstanceMetadata>(finishedOp.metadata).instanceId
         info(`Destroyed instance with id '${instanceId}'`)
     } else {
-        core_error(`Failed to create instance'`)
-        throw new Error('Failed to create instance')
+        core_error(`Failed to destroy instance'`)
+        throw new Error('Failed to destroy instance')
     }
     endGroup()
 }
@@ -224,11 +227,38 @@ async function start(
     session: Session,
     instanceService: WrappedServiceClientType<typeof InstanceServiceService>
 ): Promise<void> {
-    const label = config.generateUniqueLabel()
+    // Determine the label to use
+    // If label is provided in input, use it (enables warm pool pattern)
+    // Otherwise, generate a unique random label (original behavior)
+    const label = config.input.label || config.generateUniqueLabel()
+    
+    // If reuse-existing is enabled and we have a fixed label, check for existing runner
+    if (config.input.reuseExisting && config.input.label) {
+        info(`Checking for existing runner with label '${label}' (reuse-existing mode)`)
+        
+        const existingRunner = await getAvailableRunner(config, label)
+        
+        if (existingRunner) {
+            info(`Reusing existing runner '${existingRunner.name}' with label '${label}'`)
+            info('Skipping VM creation - warm pool runner is available!')
+            
+            setOutput('label', label)
+            setOutput('instance-id', '') // No new instance created
+            setOutput('reused', 'true')
+            return
+        }
+        
+        info(`No available runner found with label '${label}', will create a new VM`)
+    }
+    
+    // Create new VM and register runner
     const githubRegistrationToken = await getRegistrationToken(config)
     const instanceId = await createVm(session, instanceService, context.repo, githubRegistrationToken, label)
+    
     setOutput('label', label)
     setOutput('instance-id', instanceId)
+    setOutput('reused', 'false')
+    
     await waitForRunnerRegistered(config, label)
 }
 

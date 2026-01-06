@@ -2,7 +2,7 @@ import { info, error as core_error } from '@actions/core'
 import { getOctokit } from '@actions/github'
 import { Config } from './config'
 
-interface Runner {
+export interface Runner {
     /** The id of the runner. */
     id: number
     /** The name of the runner. */
@@ -38,6 +38,29 @@ export async function getRunner(config: Config, label: string): Promise<Runner |
         info(`GitHub self-hosted runner receiving error: ${error}`)
         return null
     }
+}
+
+// Check if a runner with the given label exists and is available (online and not busy)
+export async function getAvailableRunner(config: Config, label: string): Promise<Runner | null> {
+    const runner = await getRunner(config, label)
+    
+    if (!runner) {
+        info(`No runner found with label '${label}'`)
+        return null
+    }
+    
+    if (runner.status !== 'online') {
+        info(`Runner '${runner.name}' with label '${label}' exists but is not online (status: ${runner.status})`)
+        return null
+    }
+    
+    if (runner.busy) {
+        info(`Runner '${runner.name}' with label '${label}' is online but busy`)
+        return null
+    }
+    
+    info(`Found available runner '${runner.name}' with label '${label}' (online and not busy)`)
+    return runner
 }
 
 // get GitHub Registration Token for registering a self-hosted runner

@@ -15,6 +15,7 @@ export interface ActionConfig {
     githubToken: string
     runnerHomeDir: string
     label: string
+    reuseExisting: boolean
     subnetId: string
     publicIp: boolean
     serviceAccountId: string
@@ -102,6 +103,7 @@ function parseVmInputs(): ActionConfig {
     const githubToken = getInput('github-token')
     const runnerHomeDir = getInput('runner-home-dir')
     const label = getInput('label')
+    const reuseExisting = getBooleanInput('reuse-existing', { required: false })
 
     const serviceAccountId: string = getInput('service-account-id')
 
@@ -149,6 +151,7 @@ function parseVmInputs(): ActionConfig {
         githubToken,
         runnerHomeDir,
         label,
+        reuseExisting,
         serviceAccountId,
         secondDiskImageId,
         secondDiskType,

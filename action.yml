@@ -1,6 +1,6 @@
 name: 'YC GitHub Runner'
-description: 'GitHub Action to deploy container to Yandex Cloud COI VM'
-author: 'Nikolay Matrosov'
+description: 'GitHub Action to deploy container to Yandex Cloud COI VM with warm pool support'
+author: 'Nikolay Matrosov, modified by iCube team'
 inputs:
   mode:
     description: >-
@@ -31,23 +31,32 @@ inputs:
     required: true
     description: 'Folder ID'
   label:
-    required: false # Required for 'stop' mode
+    required: false
     description: >-
-      Name of the unique label assigned to the runner.
-      The label is used to remove the runner from GitHub when the runner is not needed anymore.
-      This input is required if you use the 'stop' mode.
+      Name of the label assigned to the runner.
+      For 'start' mode: if provided, this fixed label will be used instead of generating a random one.
+      This enables warm pool pattern - if a runner with this label already exists and is online,
+      the action will reuse it instead of creating a new VM.
+      For 'stop' mode: required to identify and remove the runner.
+  reuse-existing:
+    required: false
+    description: >-
+      If true and a runner with the specified label already exists and is online (not busy),
+      the action will reuse it instead of creating a new VM. This enables warm pool pattern.
+      Only works when 'label' is also provided.
+    default: 'false'
   runner-home-dir:
     description: >-
       Directory that contains actions-runner software and scripts. E.g. /home/runner/actions-runner.
     required: false
   instance-id:
-    required: false # Required for 'stop' mode
+    required: false
     description: >-
       Id of the created instance.
       This input is required if you use the 'stop' mode.'
   image-id:
-    required: false # Required for 'start' mode
-    description: 'Id of the image that will be used to create boot disk of the VM. This input is required if you use the \u201Cstart\u201D mode.'
+    required: false
+    description: 'Id of the image that will be used to create boot disk of the VM. This input is required if you use the "start" mode.'
   service-account-id:
     required: false
     description: 'Id of service account that will be attached to VM.'
@@ -125,6 +134,10 @@ outputs:
     description: >-
       YC Instance Id of the created runner.
       The id is used to terminate the instance when the runner is not needed anymore.
+      If reuse-existing is true and an existing runner was reused, this will be empty.
+  reused:
+    description: >-
+      Whether an existing runner was reused (true) or a new VM was created (false).
 branding:
   color: blue
   icon: upload-cloud
